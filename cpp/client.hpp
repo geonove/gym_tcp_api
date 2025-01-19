@@ -101,6 +101,7 @@ class Client
    */
   void receive(std::string& data)
   {
+    std::cout << "receiving 1 \n"; 
     // Set a deadline for the asynchronous operation.
     deadline.expires_from_now(boost::posix_time::seconds(10));
 
@@ -110,14 +111,14 @@ class Client
 
     boost::asio::streambuf response;
     size_t reply_length;
-
+    
     boost::asio::async_read_until(s, response, "\r\n\r\n",
         boost::bind(async_read_handler, boost::asio::placeholders::error, &ec,
         boost::asio::placeholders::bytes_transferred, &reply_length));
-
+    std::cout << "receiving 2 \n"; 
     // Block until the asynchronous operation has completed.
     do io_context.run_one(); while (ec == boost::asio::error::would_block);
-
+    std::cout << "receiving 3 \n"; 
     if (ec)
     {
       throw boost::system::system_error(ec);

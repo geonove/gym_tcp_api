@@ -11,134 +11,146 @@
 #include "environment.hpp"
 #include "messages.hpp"
 
-namespace gym {
-
-inline Environment::Environment() : renderValue(false)
+namespace gym
 {
-  // Nothing to do here.
-}
 
-inline Environment::Environment(const std::string& host, const std::string& port) :
-    renderValue(false)
-{
-  client.connect(host, port);
-}
-
-inline Environment::Environment(
-    const std::string& host,
-    const std::string& port,
-    const std::string& environment) :
-    renderValue(false)
-{
-  client.connect(host, port);
-  make(environment);
-}
-
-inline void Environment::make(const std::string& environment)
-{
-  client.send(messages::EnvironmentName(environment));
-
-  std::string json;
-  client.receive(json);
-  parser.parse(json);
-  parser.environment(instance);
-
-  observationSpace();
-  actionSpace();
-
-  observation_space.client(client);
-  action_space.client(client);
-  record_episode_stats.client(client);
-}
-
-inline void Environment::render()
-{
-  if (renderValue)
+  inline Environment::Environment() : renderValue(false)
   {
-    renderValue = false;
+    // Nothing to do here.
   }
-  else
+
+  inline Environment::Environment(const std::string &host, const std::string &port) : renderValue(false)
   {
-    renderValue = true;
+    client.connect(host, port);
   }
-}
 
-inline void Environment::close()
-{
-  client.send(messages::EnvironmentClose());
-}
+  inline Environment::Environment(
+      const std::string &host,
+      const std::string &port,
+      const std::string &environment) : renderValue(false)
+  {
+    client.connect(host, port);
+    make(environment);
+  }
 
-inline const arma::mat& Environment::reset()
-{
-  client.send(messages::EnvironmentReset());
+  inline void Environment::make(const std::string &environment)
+  {
+    client.send(messages::EnvironmentName(environment));
 
-  std::string json;
-  client.receive(json);
+    std::string json;
+    client.receive(json);
+    parser.parse(json);
+    parser.environment(instance);
 
-  parser.parse(json);
-  parser.observation(&observation_space, observation);
+    observationSpace();
+    actionSpace();
 
-  return observation;
-}
+    observation_space.client(client);
+    action_space.client(client);
+    record_episode_stats.client(client);
+  }
 
-inline void Environment::step(const arma::mat& action)
-{
-  client.send(messages::Step(action, action_space, renderValue));
+  inline void Environment::render()
+  {
+    if (renderValue)
+    {
+      renderValue = false;
+    }
+    else
+    {
+      renderValue = true;
+    }
+  }
 
-  std::string json;
-  client.receive(json);
+  inline void Environment::close()
+  {
+    client.send(messages::EnvironmentClose());
+  }
 
-  parser.parse(json);
-  parser.observation(&observation_space, observation);
-  parser.info(reward, done, info);
-}
+  inline const arma::mat &Environment::reset()
+  {
+    client.send(messages::EnvironmentReset());
 
-inline void Environment::seed(const size_t s)
-{
-  client.send(messages::EnvironmentSeed(s));
-}
+    std::string json;
+    client.receive(json);
 
-inline void Environment::compression(const size_t compression)
-{
-  client.compression(compression);
-  client.send(messages::ServerCompression(compression));
-}
+    parser.parse(json);
+    parser.observation(&observation_space, observation);
 
-inline void Environment::observationSpace()
-{
-  client.send(messages::EnvironmentObservationSpace());
+    return observation;
+  }
 
-  std::string json;
-  client.receive(json);
+  inline void Environment::step(const arma::mat &action)
+  {
+    std::cout << "ok 1" << std::endl;
+    client.send(messages::Step(action, action_space, renderValue));
+    std::cout << "ok 2" << std::endl;
 
-  parser.parse(json);
-  parser.space(&observation_space);
-}
+    std::string json;
+    try
+    {
+      client.receive(json);
+    }
+    catch (std::exception &e)
+    {
+      std::cout << "throwing>> " << e.what() << "\n" << std::endl;
+      throw;
+    }
+    std::cout << "ok 3" << std::endl;
+    parser.parse(json);
+    std::cout << "ok 4" << std::endl;
+    parser.observation(&observation_space, observation);
+    std::cout << "ok 5" << std::endl;
+    parser.info(reward, done, info);
+    std::cout << "ok 6" << std::endl;
+  }
 
-inline void Environment::actionSpace()
-{
-  client.send(messages::EnvironmentActionSpace());
+  inline void Environment::seed(const size_t s)
+  {
+    client.send(messages::EnvironmentSeed(s));
+  }
 
-  std::string json;
-  client.receive(json);
+  inline void Environment::compression(const size_t compression)
+  {
+    client.compression(compression);
+    client.send(messages::ServerCompression(compression));
+  }
 
-  parser.parse(json);
-  parser.space(&action_space);
-}
+  inline void Environment::observationSpace()
+  {
+    client.send(messages::EnvironmentObservationSpace());
 
-inline std::string Environment::url()
-{
-  client.send(messages::URL());
+    std::string json;
+    client.receive(json);
 
-  std::string json;
-  client.receive(json);
+    parser.parse(json);
+    parser.space(&observation_space);
+  }
 
-  std::string url;
-  parser.parse(json);
-  parser.url(url);
+  inline void Environment::actionSpace()
+  {
+    client.send(messages::EnvironmentActionSpace());
 
-  return url;
-}
+    std::string json;
+    client.receive(json);
+
+    parser.parse(json);
+    parser.space(&action_space);
+  }
+
+  inline std::string Environment::url()
+  {
+    client.send(messages::URL());
+
+    std::string json;
+    client.receive(json);
+
+    std::string url;
+    parser.parse(json);
+    parser.url(url);
+
+    return url;
+  }
 
 } // namespace gym
 

@@ -11,11 +11,12 @@
 
 using namespace gym;
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
   const std::string environment = "CartPole-v1";
   const std::string host = "127.0.0.1";
   const std::string port = "4040";
+  const std::string renderMode = "rgb_array";
 
   double totalReward = 0;
   size_t totalSteps = 0;
@@ -26,14 +27,19 @@ int main(int argc, char* argv[])
 
   env.reset();
   env.render();
-
+  std::cout << "After render" << std::endl;
   while (1)
   {
     arma::mat action = env.action_space.sample();
-    std::cout << "action: \n" << action << std::endl;
-
-    env.step(action);
-
+    std::cout << "action: \n"
+              << action << std::endl;
+    try
+    {
+      env.step(action);
+    } catch(std::exception& e) {
+      std::cout << e.what() << std::endl;
+      throw;
+    }
     totalReward += env.reward;
     totalSteps += 1;
 
@@ -43,18 +49,18 @@ int main(int argc, char* argv[])
     }
 
     std::cout << "Current step: " << totalSteps << " current reward: "
-      << totalReward << std::endl;
+              << totalReward << std::endl;
   }
 
   std::cout << "Instance: " << env.instance << " total steps: " << totalSteps
-      << " reward: " << totalReward << std::endl;
+            << " reward: " << totalReward << std::endl;
 
   env.close();
   const std::string url = env.url();
 
   std::cout << "Video: https://kurg.org/media/gym/" << url
-      << " (it might take some minutes before the video is accessible)."
-      << std::endl;
+            << " (it might take some minutes before the video is accessible)."
+            << std::endl;
 
   return 0;
 }

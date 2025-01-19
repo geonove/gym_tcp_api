@@ -67,6 +67,7 @@ static inline std::string EnvironmentObservationSpace()
 //! Create message to get the action space sample.
 static inline std::string EnvironmentActionSpaceSample()
 {
+  std::cout << "sampling" << std::endl;
   return "{\"env\":{\"actionspace\": \"sample\"}}";
 }
 

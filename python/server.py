@@ -1,13 +1,16 @@
 import json
+import queue
 import uuid
 import numpy as np
 import socket
 import os
 from _thread import *
 import glob
+import time
 
-import gym
-from gym.wrappers import RecordEpisodeStatistics
+import gymnasium as gym
+from gymnasium.wrappers import RecordEpisodeStatistics
+import threading
 
 try:
   import zlib
@@ -33,6 +36,26 @@ except socket.error as e:
 print('Waitiing for a Connection..')
 ServerSocket.listen(5)
 
+# import queue
+# import threading
+
+# # Global rendering queue
+# render_queue = queue.Queue()
+
+# def render_worker():
+#     while True:
+#         env = render_queue.get()
+#         if env is None:  # Sentinel to stop the thread
+#             break
+#         try:
+#             env.render()
+#         except Exception as e:
+#             print(f"Render Error: {e}")
+
+# # Start the render thread
+# render_thread = threading.Thread(target=render_worker)
+# render_thread.start()
+
 
 try:
     unicode = unicode
@@ -49,6 +72,8 @@ else:
     bytes = str
     basestring = basestring
 
+render_queue = queue.Queue()
+
 """
   Container and manager for the environments instantiated
   on this server. The Envs class is based on the gym-http-api project
@@ -64,6 +89,21 @@ class Envs(object):
   def __init__(self):
     self.envs = {}
     self.id_len = 13
+    self.render_thread = threading.Thread(target=self._render_loop, daemon=True)
+    self.render_thread.start()
+
+  def _render_loop(self):
+    print("+++IN RENDER LOOP+++")
+    while True:
+      try:
+        # Wait for render tasks
+        instance_id = render_queue.get()
+        env = self.envs[instance_id]
+        env.render()  # Render on the main thread
+      except queue.Empty:
+        pass
+      except Exception as e:
+        print(f"Render error: {e}")
 
   def _lookup_env(self, instance_id):
     try:
@@ -79,7 +119,7 @@ class Envs(object):
 
   def create(self, env_id):
     try:
-      env = gym.make(env_id)
+      env = gym.make(env_id, render_mode="human")
     except gym.error.Error:
       raise InvalidUsage(
           "Attempted to look up malformed environment ID '{}'".format(env_id))
@@ -89,21 +129,92 @@ class Envs(object):
     return instance_id
 
   def reset(self, instance_id):
+    print("----")
     env = self._lookup_env(instance_id)
-    obs, _ = env.reset()
+    print("---")
+    try:
+      print("boh")
+      obs, info = env.reset()
+      print(">", env.action_space.sample())
+    except Exception as e:
+      print(e)
+      raise e  
+    print("-----")
     return env.observation_space.to_jsonable(obs)
 
+  # def step(self, instance_id, action, render):
+  #   env = self._lookup_env(instance_id)
+  #   print(type(env))
+    
+  #   print(type(env))
+  #   try: 
+  #     print(action)
+  #     action_from_json = env.action_space.from_jsonable([action])
+  #   except Exception as e: 
+  #      print(f"boh error: {e}")
+  #   if (not isinstance(action_from_json, (list))):
+  #     action_from_json = int(action_from_json)
+  #   print("saoiha")
+  #   if render: 
+  #     print("adjfh")
+  #     env.render()
+  #   print("++")
+  #   try:
+  #     [observation, reward, done, info] = env.step(action_from_json)
+  #   except Exception as e:
+  #     print(f"step error: {e}")
+  #   print("++")
+  #   obs_jsonable = env.observation_space.to_jsonable(observation)
+  #   print("++")
+  #   return [obs_jsonable, reward, done, info]
+
+  # Update the step method in Envs
   def step(self, instance_id, action, render):
     env = self._lookup_env(instance_id)
-    action_from_json = env.action_space.from_jsonable(action)
-    if (not isinstance(action_from_json, (list))):
+    try:
+      print(type(env.action_space))
+      print(action, type(action))
+      a = env.action_space.sample()
+      action_from_json = env.action_space.from_jsonable([a])
+    except Exception as e: 
+      print(f"Error parsing action: {e}")
+      raise e
+    if not isinstance(action_from_json, list):
       action_from_json = int(action_from_json)
+    
+    try:
+      print("ok")
+      print(action_from_json, action_from_json[0], type(action_from_json[0]))
+      print("+++")
+      
+      observation, reward, done, truncated, info = env.step(action_from_json[0])
+      print("ok123")
+      if render:
+        print("in render if statemnet")
+        print("current thread: ", threading.current_thread()) 
+        print("main thread: ", threading.main_thread())
+        #env.render()
+        render_queue.put(env)  # Add the environment to the render queue
+        print("after put")
+    except Exception as e:
+      print(env.action_space.contains(0))
+      print(env.action_space.contains(1))
+      print(env.action_space.contains(2))
+      print(env.action_space)
+      print(f"{action_from_json!r} ({type(action_from_json)}) invalid")
+      print(f"Step Error: {e}")
+      raise e
+    
+    print(done, truncated)
+    if done or truncated:
+      env.reset()
 
-    if render: env.render()
-    [observation, reward, done, info] = env.step(action_from_json)
-
-    obs_jsonable = env.observation_space.to_jsonable(observation)
-    return [obs_jsonable, reward, done, info]
+    try:
+      obs_jsonable = env.observation_space.to_jsonable(observation)
+    except Exception as e:
+      print("Error converting json", e)
+    print("try ok")
+    return [obs_jsonable, reward, done, truncated, info]
 
   def seed(self, s):
     env = self._lookup_env(instance_id)
@@ -236,7 +347,7 @@ def recv_client(connection):
     return buffer
 
 def threaded_client(connection):
-    #connection.send(str.encode('Welcome to the Server\n'))
+    connection.send(str.encode('Welcome to the Server\n'))
     envs = Envs()
     enviroment = None
     instance_id = None
@@ -374,3 +485,22 @@ while True:
     ThreadCount += 1
     print('Thread Number: ' + str(ThreadCount))
 ServerSocket.close()
+
+# Example server usage
+# if __name__ == "__main__":
+#   server = Envs()
+
+#   # Example workflow
+#   env_id = server.create("CartPole-v1")
+#   obs = server.reset(env_id)
+#   print("OBS", obs)
+#   print("rendering")
+
+#   done = False
+#   while not done:
+#     action = server.envs[env_id].action_space.sample()  # Sample random action
+#     _, _, terminated, truncated, _ = server.step(env_id, action, render=True)
+#     time.sleep(0.1)
+#     done = terminated or truncated
+
+#   server.env_close(env_id)
