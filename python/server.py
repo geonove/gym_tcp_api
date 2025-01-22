@@ -1,9 +1,11 @@
 import json
 import uuid
+import queue
 import numpy as np
 import socket
 import os
 from _thread import *
+import threading
 import glob
 
 import gymnasium as gym
@@ -17,7 +19,6 @@ except ImportError:
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
 
 ServerSocket = socket.socket()
 ServerSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -49,6 +50,45 @@ else:
     bytes = str
     basestring = basestring
 
+render_queue = queue.Queue()
+
+def rendering_loop():
+  while True:
+    print("-->> render loop")
+    try:
+      env = render_queue.get(timeout=1)
+      env.render()
+    except queue.Empty:
+      continue
+    except Exception as e:
+      print(f"Render error: {e}")
+
+
+class SafeRenderEnv(gym.Env):
+    def __init__(self, env_id, render_mode=None):
+        self.env = gym.make(env_id, render_mode=render_mode)
+        self.render_mode = render_mode
+    
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        # Avoid calling render directly on reset
+        if self.render_mode == "human":
+            render_queue.put(self.env)  # Queue the rendering task
+        return obs, info
+    
+    def step(self, action):
+        return self.env.step(action)
+
+    def render(self, **kwargs):
+        return self.env.render(**kwargs)
+    
+    def close(self):
+        self.env.close()
+
+    def __getattr__(self, name):
+        # Delegate attribute access to the underlying environment
+        return getattr(self.env, name)
+
 """
   Container and manager for the environments instantiated
   on this server. The Envs class is based on the gym-http-api project
@@ -79,7 +119,7 @@ class Envs(object):
 
   def create(self, env_id, render_mode=None):
     try:
-      env = gym.make(env_id, render_mode=render_mode)
+      env = SafeRenderEnv(env_id, render_mode=render_mode)
     except gym.error.Error:
       raise InvalidUsage(
           "Attempted to look up malformed environment ID '{}'".format(env_id))
@@ -90,7 +130,10 @@ class Envs(object):
 
   def reset(self, instance_id):
     env = self._lookup_env(instance_id)
-    obs, _ = env.reset()
+    try:
+      obs, _ = env.reset()
+    except Exception as e:
+      print(f"Error while resetting: {e}")
     return env.observation_space.to_jsonable(obs)
 
   def step(self, instance_id, action, render):
@@ -99,11 +142,12 @@ class Envs(object):
     if (not isinstance(action_from_json, (list))):
       action_from_json = int(action_from_json)
 
-    if render: env.render()
-    [observation, reward, done, info] = env.step(action_from_json)
-
+    if render: 
+      # env.render()
+      render_queue.put(env)
+    [observation, reward, terminated, _, info] = env.step(action_from_json[0])
     obs_jsonable = env.observation_space.to_jsonable(observation)
-    return [obs_jsonable, reward, done, info]
+    return [obs_jsonable, reward, terminated, info]
 
   def seed(self, s):
     env = self._lookup_env(instance_id)
@@ -312,7 +356,10 @@ def threaded_client(connection):
           connection.send(process_data(data, compressionLevel))
           return enviroment, instance_id, close, compressionLevel
         elif envAction == "observationspace":
-          info = envs.get_observation_space_info(instance_id)
+          try:
+            info = envs.get_observation_space_info(instance_id)
+          except Exception as e:
+            print(e)
           data = json.dumps({"info" : info}, cls = NDArrayEncoder)
           connection.send(process_data(data, compressionLevel))
           return enviroment, instance_id, close, compressionLevel
@@ -324,12 +371,14 @@ def threaded_client(connection):
 
         render = True if (render is not None and render == 1) else False
 
-        [obs, reward, done, info] = envs.step(
-                instance_id, action, render)
+        try: 
+          [obs, reward, terminated, info] = envs.step(instance_id, action, render)
+        except Exception as e:
+          print(f"{e}")
 
         data = json.dumps({"observation" : obs,
                            "reward" : reward,
-                           "done" : done,
+                           "done" : terminated,
                            "info" : info}, cls = NDArrayEncoder)
         connection.send(process_data(data, compressionLevel))
         return enviroment, instance_id, close, compressionLevel
@@ -373,7 +422,8 @@ def threaded_client(connection):
 while True:
     Client, address = ServerSocket.accept()
     print('Connected to: ' + address[0] + ':' + str(address[1]))
-    start_new_thread(threaded_client, (Client, ))
+    # start_new_thread(threaded_client, (Client, ))
+    threading.Thread(target=threaded_client, args=(Client, )).start()
     ThreadCount += 1
     print('Thread Number: ' + str(ThreadCount))
 ServerSocket.close()
