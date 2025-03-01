@@ -3,6 +3,7 @@ import uuid
 import numpy as np
 import socket
 import os
+import platform
 from _thread import *
 import glob
 
@@ -368,21 +369,23 @@ def threaded_client(connection):
         return
     connection.close()
 
-# while True:
-#     Client, address = ServerSocket.accept()
-#     print('Connected to: ' + address[0] + ':' + str(address[1]))
-#     start_new_thread(threaded_client, (Client, ))
-#     ThreadCount += 1
-#     print('Thread Number: ' + str(ThreadCount))
-# ServerSocket.close()
 
-
-# This is needed to make it work on MacOS. In fact, MacOS doesn't allow to rendere on threads 
-# other than the main thread
-while True:
-    Client, address = ServerSocket.accept()
-    print('Connected to: ' + address[0] + ':' + str(address[1]))
-    ThreadCount += 1
-    print('Thread Number: ' + str(ThreadCount))
-    threaded_client(Client)  # Directly call the function without threading
-ServerSocket.close()
+if __name__ == "__main__": 
+  if platform.system() == 'Darwin':
+    # This is needed to make it work on MacOS. In fact, MacOS doesn't allow to rendere on threads 
+    # other than the main thread
+    while True:
+      Client, address = ServerSocket.accept()
+      print('Connected to: ' + address[0] + ':' + str(address[1]))
+      ThreadCount += 1
+      print('Thread Number: ' + str(ThreadCount))
+      threaded_client(Client)  # Directly call the function without threading
+    ServerSocket.close()
+  else:
+    while True:
+        Client, address = ServerSocket.accept()
+        print('Connected to: ' + address[0] + ':' + str(address[1]))
+        start_new_thread(threaded_client, (Client, ))
+        ThreadCount += 1
+        print('Thread Number: ' + str(ThreadCount))
+    ServerSocket.close()
